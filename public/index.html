@@ -1,0 +1,1021 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>CELIA Alliance — Member Map</title>
+
+  <!-- MapLibre GL JS -->
+  <link href="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.css" rel="stylesheet" />
+  <script src="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.js"></script>
+
+  <!-- Config (edit this file to update map data) -->
+  <script src="config.js"></script>
+
+  <style>
+    /* ── Reset & base ─────────────────────────── */
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      /* These are populated by JS from config.js */
+      --c-primary:        #1a3a5c;
+      --c-primary-light:  #2d6096;
+      --c-primary-muted:  rgba(26,58,92,0.15);
+      --c-accent:         #c8a951;
+      --c-panel-bg:       #ffffff;
+      --c-panel-border:   #e2e8f0;
+      --c-text-primary:   #1a202c;
+      --c-text-secondary: #4a5568;
+      --c-text-muted:     #718096;
+      --font-display:     'Playfair Display', Georgia, serif;
+      --font-body:        'Source Sans 3', system-ui, sans-serif;
+      --panel-w:          340px;
+      --header-h:         56px;
+      --radius:           8px;
+      --shadow:           0 4px 24px rgba(0,0,0,0.12);
+      --transition:       0.2s ease;
+    }
+
+    html, body {
+      height: 100%;
+      font-family: var(--font-body);
+      color: var(--c-text-primary);
+      background: #f0f4f8;
+      overflow: hidden;
+    }
+
+    /* ── Layout ───────────────────────────────── */
+    #app {
+      display: flex;
+      flex-direction: column;
+      height: 100vh;
+    }
+
+    #header {
+      height: var(--header-h);
+      background: var(--c-primary);
+      display: flex;
+      align-items: center;
+      padding: 0 18px;
+      gap: 12px;
+      flex-shrink: 0;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.2);
+      z-index: 10;
+    }
+
+    #header-logo {
+      height: 32px;
+      object-fit: contain;
+    }
+
+    #header-wordmark {
+      display: flex;
+      flex-direction: column;
+      line-height: 1.1;
+    }
+
+    #header-name {
+      font-family: var(--font-display);
+      font-size: 17px;
+      font-weight: 700;
+      color: #ffffff;
+      letter-spacing: 0.02em;
+    }
+
+    #header-tagline {
+      font-size: 10px;
+      color: rgba(255,255,255,0.65);
+      letter-spacing: 0.06em;
+      text-transform: uppercase;
+    }
+
+    #header-stats {
+      margin-left: auto;
+      display: flex;
+      gap: 18px;
+    }
+
+    .stat {
+      text-align: right;
+      color: rgba(255,255,255,0.85);
+    }
+    .stat-value {
+      font-family: var(--font-display);
+      font-size: 18px;
+      font-weight: 700;
+      line-height: 1;
+      color: var(--c-accent);
+    }
+    .stat-label {
+      font-size: 9px;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      color: rgba(255,255,255,0.55);
+    }
+
+    /* ── Main area ────────────────────────────── */
+    #main {
+      display: flex;
+      flex: 1;
+      overflow: hidden;
+      position: relative;
+    }
+
+    /* ── Map ──────────────────────────────────── */
+    #map {
+      flex: 1;
+      position: relative;
+    }
+
+    /* ── Side panel ───────────────────────────── */
+    #panel {
+      width: var(--panel-w);
+      background: var(--c-panel-bg);
+      border-left: 1px solid var(--c-panel-border);
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+      flex-shrink: 0;
+      z-index: 5;
+    }
+
+    #panel-header {
+      padding: 16px 18px 12px;
+      border-bottom: 1px solid var(--c-panel-border);
+      flex-shrink: 0;
+    }
+
+    #search-wrap {
+      position: relative;
+    }
+
+    #search {
+      width: 100%;
+      padding: 8px 32px 8px 10px;
+      border: 1px solid var(--c-panel-border);
+      border-radius: var(--radius);
+      font-family: var(--font-body);
+      font-size: 13px;
+      color: var(--c-text-primary);
+      background: #f8fafc;
+      outline: none;
+      transition: border-color var(--transition);
+    }
+    #search:focus { border-color: var(--c-primary-light); }
+    #search-icon {
+      position: absolute;
+      right: 9px;
+      top: 50%;
+      transform: translateY(-50%);
+      color: var(--c-text-muted);
+      pointer-events: none;
+    }
+
+    /* Filter chips */
+    #filter-bar {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 5px;
+      margin-top: 10px;
+    }
+
+    .chip {
+      padding: 3px 10px;
+      border-radius: 20px;
+      font-size: 11px;
+      font-weight: 600;
+      cursor: pointer;
+      border: 1.5px solid transparent;
+      transition: all var(--transition);
+      background: #f1f5f9;
+      color: var(--c-text-secondary);
+      letter-spacing: 0.02em;
+    }
+    .chip.active {
+      background: var(--c-primary);
+      color: #fff;
+      border-color: var(--c-primary);
+    }
+    .chip:hover:not(.active) {
+      border-color: var(--c-primary);
+      color: var(--c-primary);
+    }
+
+    /* Member list */
+    #member-list {
+      flex: 1;
+      overflow-y: auto;
+      padding: 8px 0;
+    }
+
+    .member-item {
+      padding: 11px 18px;
+      cursor: pointer;
+      border-bottom: 1px solid #f1f5f9;
+      transition: background var(--transition);
+      display: flex;
+      flex-direction: column;
+      gap: 3px;
+    }
+    .member-item:hover { background: #f8fafc; }
+    .member-item.active { background: var(--c-primary-muted); }
+
+    .member-firm {
+      font-weight: 600;
+      font-size: 13px;
+      color: var(--c-text-primary);
+      line-height: 1.3;
+    }
+
+    .member-meta {
+      font-size: 11.5px;
+      color: var(--c-text-muted);
+    }
+
+    .member-group-tag {
+      display: inline-block;
+      font-size: 10px;
+      font-weight: 600;
+      padding: 1px 7px;
+      border-radius: 3px;
+      background: var(--c-primary-muted);
+      color: var(--c-primary);
+      letter-spacing: 0.03em;
+      margin-top: 2px;
+    }
+
+    /* Detail panel (slides in when a firm is selected) */
+    #detail-panel {
+      position: absolute;
+      bottom: 0; left: 0; right: 0;
+      background: var(--c-panel-bg);
+      border-top: 3px solid var(--c-primary);
+      padding: 20px 18px;
+      transform: translateY(100%);
+      transition: transform 0.3s cubic-bezier(.4,0,.2,1);
+      z-index: 10;
+      box-shadow: 0 -4px 20px rgba(0,0,0,0.08);
+    }
+    #detail-panel.open { transform: translateY(0); }
+
+    #detail-close {
+      position: absolute;
+      top: 14px; right: 14px;
+      background: none;
+      border: none;
+      cursor: pointer;
+      color: var(--c-text-muted);
+      font-size: 20px;
+      line-height: 1;
+      padding: 4px;
+      border-radius: 4px;
+      transition: color var(--transition);
+    }
+    #detail-close:hover { color: var(--c-text-primary); }
+
+    #detail-firm {
+      font-family: var(--font-display);
+      font-size: 18px;
+      font-weight: 700;
+      color: var(--c-primary);
+      line-height: 1.2;
+      padding-right: 24px;
+      margin-bottom: 3px;
+    }
+
+    #detail-location {
+      font-size: 12px;
+      color: var(--c-text-muted);
+      margin-bottom: 10px;
+    }
+
+    #detail-desc {
+      font-size: 13px;
+      color: var(--c-text-secondary);
+      line-height: 1.55;
+      margin-bottom: 12px;
+    }
+
+    #detail-specialisms {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 5px;
+      margin-bottom: 14px;
+    }
+
+    .specialism-tag {
+      font-size: 10.5px;
+      font-weight: 600;
+      padding: 2px 8px;
+      background: var(--c-primary-muted);
+      color: var(--c-primary);
+      border-radius: 3px;
+      letter-spacing: 0.03em;
+    }
+
+    #detail-links {
+      display: flex;
+      gap: 10px;
+    }
+
+    .detail-link {
+      display: inline-flex;
+      align-items: center;
+      gap: 5px;
+      padding: 7px 14px;
+      border-radius: var(--radius);
+      font-size: 12px;
+      font-weight: 600;
+      text-decoration: none;
+      transition: all var(--transition);
+    }
+    .detail-link.primary {
+      background: var(--c-primary);
+      color: #fff;
+    }
+    .detail-link.primary:hover { background: var(--c-primary-light); }
+    .detail-link.secondary {
+      background: #f1f5f9;
+      color: var(--c-text-secondary);
+    }
+    .detail-link.secondary:hover { background: #e2e8f0; }
+
+    /* ── Map overlays ─────────────────────────── */
+    #map-controls {
+      position: absolute;
+      bottom: 18px;
+      left: 18px;
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+      z-index: 5;
+    }
+
+    .map-btn {
+      width: 32px; height: 32px;
+      background: var(--c-panel-bg);
+      border: 1px solid var(--c-panel-border);
+      border-radius: var(--radius);
+      cursor: pointer;
+      display: flex; align-items: center; justify-content: center;
+      font-size: 16px;
+      color: var(--c-text-secondary);
+      box-shadow: var(--shadow);
+      transition: all var(--transition);
+    }
+    .map-btn:hover { background: var(--c-primary); color: #fff; border-color: var(--c-primary); }
+
+    /* Legend */
+    #legend {
+      position: absolute;
+      bottom: 18px;
+      right: 18px;
+      background: var(--c-panel-bg);
+      border: 1px solid var(--c-panel-border);
+      border-radius: var(--radius);
+      padding: 12px 14px;
+      box-shadow: var(--shadow);
+      z-index: 5;
+      min-width: 130px;
+    }
+
+    #legend-title {
+      font-size: 9px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      color: var(--c-text-muted);
+      margin-bottom: 8px;
+    }
+
+    .legend-item {
+      display: flex;
+      align-items: center;
+      gap: 7px;
+      margin-bottom: 5px;
+      font-size: 11.5px;
+      color: var(--c-text-secondary);
+      cursor: pointer;
+      transition: color var(--transition);
+    }
+    .legend-item:last-child { margin-bottom: 0; }
+    .legend-item:hover { color: var(--c-text-primary); }
+
+    .legend-dot {
+      width: 9px; height: 9px;
+      border-radius: 50%;
+      flex-shrink: 0;
+    }
+
+    /* ── Popup ────────────────────────────────── */
+    .maplibregl-popup-content {
+      border-radius: var(--radius) !important;
+      box-shadow: var(--shadow) !important;
+      padding: 0 !important;
+      border: 1px solid var(--c-panel-border);
+      overflow: hidden;
+      min-width: 200px;
+    }
+
+    .popup-inner {
+      padding: 12px 14px;
+    }
+
+    .popup-firm {
+      font-family: var(--font-display);
+      font-weight: 700;
+      font-size: 14px;
+      color: var(--c-primary);
+      margin-bottom: 2px;
+    }
+
+    .popup-city {
+      font-size: 11.5px;
+      color: var(--c-text-muted);
+      margin-bottom: 8px;
+    }
+
+    .popup-btn {
+      display: block;
+      width: 100%;
+      padding: 7px;
+      background: var(--c-primary);
+      color: #fff;
+      text-align: center;
+      font-size: 11.5px;
+      font-weight: 600;
+      font-family: var(--font-body);
+      border: none;
+      cursor: pointer;
+      transition: background var(--transition);
+      letter-spacing: 0.04em;
+      text-transform: uppercase;
+    }
+    .popup-btn:hover { background: var(--c-primary-light); }
+
+    /* ── Cluster marker ───────────────────────── */
+    .cluster-marker {
+      background: var(--c-primary);
+      color: #fff;
+      border-radius: 50%;
+      width: 36px; height: 36px;
+      display: flex; align-items: center; justify-content: center;
+      font-weight: 700;
+      font-size: 13px;
+      border: 2px solid #fff;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.25);
+      cursor: pointer;
+      transition: transform 0.15s;
+    }
+    .cluster-marker:hover { transform: scale(1.1); }
+
+    /* ── Firm marker ──────────────────────────── */
+    .firm-marker {
+      width: 14px; height: 14px;
+      border-radius: 50%;
+      background: var(--c-primary);
+      border: 2px solid #fff;
+      box-shadow: 0 2px 6px rgba(0,0,0,0.3);
+      cursor: pointer;
+      transition: transform 0.15s, background 0.15s;
+    }
+    .firm-marker:hover, .firm-marker.active {
+      transform: scale(1.5);
+      background: var(--c-accent);
+    }
+
+    /* ── Scrollbar ────────────────────────────── */
+    #member-list::-webkit-scrollbar { width: 4px; }
+    #member-list::-webkit-scrollbar-track { background: transparent; }
+    #member-list::-webkit-scrollbar-thumb { background: #cbd5e0; border-radius: 2px; }
+
+    /* ── Empty state ──────────────────────────── */
+    #empty-state {
+      padding: 30px 18px;
+      text-align: center;
+      color: var(--c-text-muted);
+      font-size: 13px;
+      display: none;
+    }
+
+    /* ── Responsive ───────────────────────────── */
+    @media (max-width: 680px) {
+      :root { --panel-w: 100%; --header-h: 48px; }
+      #main { flex-direction: column; }
+      #panel {
+        height: 45%;
+        width: 100%;
+        border-left: none;
+        border-top: 1px solid var(--c-panel-border);
+        order: 2;
+      }
+      #map { order: 1; height: 55%; }
+      #legend, #map-controls { display: none; }
+    }
+  </style>
+</head>
+<body>
+<div id="app">
+
+  <!-- Header -->
+  <header id="header">
+    <img id="header-logo" src="" alt="" style="display:none" />
+    <div id="header-wordmark">
+      <div id="header-name"></div>
+      <div id="header-tagline"></div>
+    </div>
+    <div id="header-stats">
+      <div class="stat">
+        <div class="stat-value" id="stat-firms">0</div>
+        <div class="stat-label">Member Firms</div>
+      </div>
+      <div class="stat">
+        <div class="stat-value" id="stat-countries">0</div>
+        <div class="stat-label">Countries</div>
+      </div>
+    </div>
+  </header>
+
+  <!-- Main -->
+  <div id="main">
+
+    <!-- Map -->
+    <div id="map">
+      <div id="legend">
+        <div id="legend-title">Regions</div>
+        <div id="legend-items"></div>
+      </div>
+      <div id="map-controls">
+        <button class="map-btn" id="btn-zoom-in" title="Zoom in">+</button>
+        <button class="map-btn" id="btn-zoom-out" title="Zoom out">−</button>
+        <button class="map-btn" id="btn-reset" title="Reset view">⌂</button>
+      </div>
+    </div>
+
+    <!-- Side panel -->
+    <div id="panel">
+      <div id="panel-header">
+        <div id="search-wrap">
+          <input id="search" type="text" placeholder="Search firms or countries…" autocomplete="off" />
+          <svg id="search-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>
+          </svg>
+        </div>
+        <div id="filter-bar"></div>
+      </div>
+
+      <div id="member-list"></div>
+      <div id="empty-state">No members match your search.</div>
+
+      <!-- Detail panel (slides up inside side panel) -->
+      <div id="detail-panel">
+        <button id="detail-close">✕</button>
+        <div id="detail-firm"></div>
+        <div id="detail-location"></div>
+        <div id="detail-desc"></div>
+        <div id="detail-specialisms"></div>
+        <div id="detail-links"></div>
+      </div>
+    </div>
+
+  </div><!-- /main -->
+</div><!-- /app -->
+
+<script>
+/* ═══════════════════════════════════════════════════════════
+   CELIA Map — Main application script
+   Reads everything from window.CELIA_CONFIG (config.js)
+═══════════════════════════════════════════════════════════ */
+
+(function () {
+  'use strict';
+
+  const CFG   = window.CELIA_CONFIG;
+  const B     = CFG.branding;
+  const C     = B.colors;
+  const M     = CFG.map;
+  const MEMS  = CFG.members;
+  const GROUPS = CFG.groups;
+
+  /* ── 1. Apply CSS variables from config ──── */
+  function applyCSSVars () {
+    const root = document.documentElement.style;
+    root.setProperty('--c-primary',        C.primary);
+    root.setProperty('--c-primary-light',  C.primaryLight);
+    root.setProperty('--c-primary-muted',  C.primaryMuted);
+    root.setProperty('--c-accent',         C.accent);
+    root.setProperty('--c-panel-bg',       C.panelBg);
+    root.setProperty('--c-panel-border',   C.panelBorder);
+    root.setProperty('--c-text-primary',   C.textPrimary);
+    root.setProperty('--c-text-secondary', C.textSecondary);
+    root.setProperty('--c-text-muted',     C.textMuted);
+    root.setProperty('--font-display',     `'${B.fonts.display}', Georgia, serif`);
+    root.setProperty('--font-body',        `'${B.fonts.body}', system-ui, sans-serif`);
+  }
+
+  /* ── 2. Load Google Fonts ─────────────────── */
+  function loadFonts () {
+    const display = B.fonts.display.replace(/ /g, '+') + ':wght@400;700';
+    const body    = B.fonts.body.replace(/ /g, '+') + ':wght@400;600';
+    const link = document.createElement('link');
+    link.rel  = 'stylesheet';
+    link.href = `https://fonts.googleapis.com/css2?family=${display}&family=${body}&display=swap`;
+    document.head.appendChild(link);
+  }
+
+  /* ── 3. Populate header ───────────────────── */
+  function populateHeader () {
+    document.title = B.allianceName + ' — Member Map';
+    document.getElementById('header-name').textContent    = B.allianceName;
+    document.getElementById('header-tagline').textContent = B.tagline;
+
+    if (B.logoUrl) {
+      const img = document.getElementById('header-logo');
+      img.src  = B.logoUrl;
+      img.alt  = B.allianceName;
+      img.style.display = 'block';
+    }
+
+    const countries = new Set(MEMS.map(m => m.country));
+    document.getElementById('stat-firms').textContent     = MEMS.length;
+    document.getElementById('stat-countries').textContent = countries.size;
+  }
+
+  /* ── 4. Legend ────────────────────────────── */
+  function buildLegend () {
+    const container = document.getElementById('legend-items');
+    GROUPS.forEach(g => {
+      const item = document.createElement('div');
+      item.className = 'legend-item';
+      item.dataset.group = g.id;
+      item.innerHTML = `
+        <span class="legend-dot" style="background:${g.color}"></span>
+        <span>${g.label}</span>
+      `;
+      item.addEventListener('click', () => {
+        activeGroup = activeGroup === g.id ? null : g.id;
+        renderList();
+        updateMapFilters();
+        document.querySelectorAll('.legend-item').forEach(el => {
+          el.style.fontWeight = el.dataset.group === activeGroup ? '700' : '';
+        });
+      });
+      container.appendChild(item);
+    });
+  }
+
+  /* ── 5. Filter chips ──────────────────────── */
+  function buildChips () {
+    const bar = document.getElementById('filter-bar');
+    // "All" chip
+    const all = document.createElement('button');
+    all.className = 'chip active';
+    all.textContent = 'All';
+    all.dataset.group = '';
+    bar.appendChild(all);
+
+    GROUPS.forEach(g => {
+      // Only show groups that have members
+      const hasMembers = MEMS.some(m => m.groups.includes(g.id));
+      if (!hasMembers) return;
+      const chip = document.createElement('button');
+      chip.className = 'chip';
+      chip.textContent = g.label;
+      chip.dataset.group = g.id;
+      bar.appendChild(chip);
+    });
+
+    bar.addEventListener('click', e => {
+      const chip = e.target.closest('.chip');
+      if (!chip) return;
+      document.querySelectorAll('.chip').forEach(c => c.classList.remove('active'));
+      chip.classList.add('active');
+      activeGroup = chip.dataset.group || null;
+      searchQuery = document.getElementById('search').value.trim().toLowerCase();
+      renderList();
+      updateMapFilters();
+    });
+  }
+
+  /* ── 6. Member list ───────────────────────── */
+  let activeGroup  = null;
+  let searchQuery  = '';
+  let selectedId   = null;
+  let markerEls    = {};   // id → DOM element
+  let popup        = null;
+
+  function filteredMembers () {
+    return MEMS.filter(m => {
+      const matchGroup  = !activeGroup || m.groups.includes(activeGroup);
+      const matchSearch = !searchQuery ||
+        m.firm.toLowerCase().includes(searchQuery) ||
+        m.countryName.toLowerCase().includes(searchQuery) ||
+        m.city.toLowerCase().includes(searchQuery);
+      return matchGroup && matchSearch;
+    });
+  }
+
+  function renderList () {
+    const list    = document.getElementById('member-list');
+    const empty   = document.getElementById('empty-state');
+    const members = filteredMembers();
+    list.innerHTML = '';
+
+    if (members.length === 0) {
+      empty.style.display = 'block';
+      return;
+    }
+    empty.style.display = 'none';
+
+    members.forEach(m => {
+      const item = document.createElement('div');
+      item.className = 'member-item' + (m.id === selectedId ? ' active' : '');
+      item.dataset.id = m.id;
+      item.innerHTML = `
+        <div class="member-firm">${m.firm}</div>
+        <div class="member-meta">${m.city}, ${m.countryName}</div>
+        <span class="member-group-tag">${m.groups[0]}</span>
+      `;
+      item.addEventListener('click', () => selectMember(m));
+      list.appendChild(item);
+    });
+  }
+
+  /* ── 7. Detail panel ──────────────────────── */
+  function selectMember (m) {
+    selectedId = m.id;
+    renderList();
+
+    // Highlight marker
+    Object.values(markerEls).forEach(el => el.classList.remove('active'));
+    if (markerEls[m.id]) markerEls[m.id].classList.add('active');
+
+    // Fly to
+    map.flyTo({ center: [m.lng, m.lat], zoom: Math.max(map.getZoom(), 5), duration: 600 });
+
+    // Show popup
+    showPopup(m);
+
+    // Populate detail panel
+    document.getElementById('detail-firm').textContent     = m.firm;
+    document.getElementById('detail-location').textContent = `${m.city}, ${m.countryName}`;
+    document.getElementById('detail-desc').textContent     = m.description || '';
+
+    const spec = document.getElementById('detail-specialisms');
+    spec.innerHTML = (m.specialisms || []).map(s =>
+      `<span class="specialism-tag">${s}</span>`).join('');
+
+    const links = document.getElementById('detail-links');
+    links.innerHTML = '';
+    if (m.website) {
+      const a = document.createElement('a');
+      a.href = m.website; a.target = '_blank'; a.rel = 'noopener';
+      a.className = 'detail-link primary';
+      a.innerHTML = '↗ Visit Website';
+      links.appendChild(a);
+    }
+    if (m.email) {
+      const a = document.createElement('a');
+      a.href = `mailto:${m.email}`;
+      a.className = 'detail-link secondary';
+      a.textContent = '✉ Email';
+      links.appendChild(a);
+    }
+
+    document.getElementById('detail-panel').classList.add('open');
+  }
+
+  document.getElementById('detail-close').addEventListener('click', () => {
+    selectedId = null;
+    renderList();
+    document.getElementById('detail-panel').classList.remove('open');
+    if (popup) { popup.remove(); popup = null; }
+    Object.values(markerEls).forEach(el => el.classList.remove('active'));
+  });
+
+  /* ── 8. Search ────────────────────────────── */
+  document.getElementById('search').addEventListener('input', e => {
+    searchQuery = e.target.value.trim().toLowerCase();
+    renderList();
+  });
+
+  /* ── 9. Init MapLibre ─────────────────────── */
+  let map;
+
+  function initMap () {
+    map = new maplibregl.Map({
+      container: 'map',
+      style:     M.styleUrl,
+      center:    M.center,
+      zoom:      M.zoom,
+      minZoom:   M.minZoom,
+      maxZoom:   M.maxZoom,
+      maxBounds: M.maxBounds || undefined,
+      attributionControl: false,
+    });
+
+    map.addControl(new maplibregl.AttributionControl({ compact: true }), 'bottom-left');
+
+    map.on('load', () => {
+      addCountryLayer();
+      addMarkers();
+    });
+
+    // Zoom controls
+    document.getElementById('btn-zoom-in').addEventListener('click',  () => map.zoomIn());
+    document.getElementById('btn-zoom-out').addEventListener('click', () => map.zoomOut());
+    document.getElementById('btn-reset').addEventListener('click', () => {
+      map.flyTo({ center: M.center, zoom: M.zoom, duration: 800 });
+    });
+  }
+
+  /* ── 10. Country choropleth layer ────────── */
+  function memberCountries () {
+    return [...new Set(MEMS.map(m => m.country))];
+  }
+
+  function addCountryLayer () {
+    // We use the Natural Earth tiles embedded in the OpenFreeMap style
+    // and filter for member countries using a match expression.
+    const codes = memberCountries();
+
+    // Try to find a country boundary source in the loaded style
+    // OpenFreeMap / Positron uses "natural_earth" or "openmaptiles"
+    const style  = map.getStyle();
+    const layers = style.layers || [];
+
+    // Find country fill layer to clone from — look for boundary/country layers
+    const countryLayers = layers.filter(l =>
+      l.id && (l.id.includes('country') || l.id.includes('boundary') || l.id.includes('land'))
+    );
+
+    // Add member country highlight layer using built-in source
+    // Try common source names for different providers
+    const possibleSources = ['openmaptiles', 'natural_earth', 'protomaps', 'versatiles'];
+    let chosenSource = null;
+    for (const s of possibleSources) {
+      if (map.getSource(s)) { chosenSource = s; break; }
+    }
+
+    // Fallback: add GeoJSON country overlay using a public dataset
+    addGeoJSONCountries(codes);
+  }
+
+  async function addGeoJSONCountries (codes) {
+    // Fetch a minimal world countries GeoJSON
+    let geojson;
+    try {
+      const res = await fetch('https://raw.githubusercontent.com/datasets/geo-countries/master/data/countries.geojson');
+      geojson = await res.json();
+    } catch (e) {
+      // If fetch fails (e.g. no network), skip layer gracefully
+      console.warn('Could not load country GeoJSON:', e);
+      return;
+    }
+
+    // Filter to member countries only
+    const filtered = {
+      type: 'FeatureCollection',
+      features: geojson.features.filter(f => codes.includes(f.properties['ISO_A2'] || f.properties['iso_a2']))
+    };
+
+    if (map.getSource('member-countries')) return;
+
+    map.addSource('member-countries', { type: 'geojson', data: filtered });
+
+    map.addLayer({
+      id:     'member-countries-fill',
+      type:   'fill',
+      source: 'member-countries',
+      paint: {
+        'fill-color':   C.countryFill,
+        'fill-opacity': C.countryFillOpacity,
+      }
+    }, getFirstSymbolLayer());
+
+    map.addLayer({
+      id:     'member-countries-border',
+      type:   'line',
+      source: 'member-countries',
+      paint: {
+        'line-color':   C.countryBorder,
+        'line-opacity': C.countryBorderOpacity,
+        'line-width':   1.2,
+      }
+    }, getFirstSymbolLayer());
+
+    // Hover interaction
+    let hoveredId = null;
+    map.on('mousemove', 'member-countries-fill', e => {
+      map.getCanvas().style.cursor = 'pointer';
+      if (e.features.length) {
+        if (hoveredId !== null) {
+          map.setPaintProperty('member-countries-fill', 'fill-opacity', C.countryFillOpacity);
+        }
+        hoveredId = e.features[0].id;
+      }
+    });
+
+    map.on('mouseleave', 'member-countries-fill', () => {
+      map.getCanvas().style.cursor = '';
+      map.setPaintProperty('member-countries-fill', 'fill-opacity', C.countryFillOpacity);
+      hoveredId = null;
+    });
+
+    map.on('click', 'member-countries-fill', e => {
+      const iso  = e.features[0].properties['ISO_A2'] || e.features[0].properties['iso_a2'];
+      const mems = MEMS.filter(m => m.country === iso);
+      if (mems.length === 1) {
+        selectMember(mems[0]);
+      } else if (mems.length > 1) {
+        // Zoom into country
+        map.flyTo({ center: [e.lngLat.lng, e.lngLat.lat], zoom: 5, duration: 600 });
+      }
+    });
+  }
+
+  function getFirstSymbolLayer () {
+    const layers = map.getStyle().layers;
+    for (const l of layers) {
+      if (l.type === 'symbol') return l.id;
+    }
+    return undefined;
+  }
+
+  /* ── 11. Markers ─────────────────────────── */
+  function addMarkers () {
+    MEMS.forEach(m => {
+      const el = document.createElement('div');
+      el.className = 'firm-marker';
+      el.title = m.firm;
+
+      el.addEventListener('click', e => {
+        e.stopPropagation();
+        selectMember(m);
+      });
+
+      const marker = new maplibregl.Marker({ element: el })
+        .setLngLat([m.lng, m.lat])
+        .addTo(map);
+
+      markerEls[m.id] = el;
+    });
+  }
+
+  /* ── 12. Popup ────────────────────────────── */
+  function showPopup (m) {
+    if (popup) popup.remove();
+
+    const html = `
+      <div class="popup-inner">
+        <div class="popup-firm">${m.firm}</div>
+        <div class="popup-city">${m.city}, ${m.countryName}</div>
+      </div>
+      <button class="popup-btn" onclick="window.__celiaSelectById('${m.id}')">View Details</button>
+    `;
+
+    popup = new maplibregl.Popup({ offset: 14, closeOnClick: false, maxWidth: '240px' })
+      .setLngLat([m.lng, m.lat])
+      .setHTML(html)
+      .addTo(map);
+
+    popup.on('close', () => { popup = null; });
+  }
+
+  // Global bridge for popup button
+  window.__celiaSelectById = function (id) {
+    const m = MEMS.find(x => x.id === id);
+    if (m) selectMember(m);
+  };
+
+  /* ── 13. Map filter on group change ─────── */
+  function updateMapFilters () {
+    const visible = filteredMembers().map(m => m.id);
+    Object.entries(markerEls).forEach(([id, el]) => {
+      el.style.display = visible.includes(id) ? '' : 'none';
+    });
+
+    // Update country layer
+    if (map.getLayer('member-countries-fill')) {
+      const codes = [...new Set(filteredMembers().map(m => m.country))];
+      // Rebuild GeoJSON filter — simpler to re-filter source
+      const src = map.getSource('member-countries');
+      if (src && src._data) {
+        // Can't easily re-filter, just update opacity as signal
+      }
+    }
+  }
+
+  /* ── 14. Boot ─────────────────────────────── */
+  applyCSSVars();
+  loadFonts();
+  populateHeader();
+  buildLegend();
+  buildChips();
+  renderList();
+  initMap();
+
+})();
+</script>
+</body>
+</html>
