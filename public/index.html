@@ -1,0 +1,666 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>CELIA Alliance — Member Map</title>
+
+  <link href="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.css" rel="stylesheet" />
+  <script src="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.js"></script>
+  <script src="config.js"></script>
+
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    button { font: inherit; cursor: pointer; border: none; background: none; }
+    a { color: inherit; text-decoration: none; }
+
+    :root {
+      --c-primary:       #1a3a5c;
+      --c-primary-light: #2d6096;
+      --c-primary-muted: rgba(26,58,92,0.13);
+      --c-accent:        #c8a951;
+      --c-panel-bg:      #ffffff;
+      --c-border:        #e2e8f0;
+      --c-text-1:        #1a202c;
+      --c-text-2:        #4a5568;
+      --c-text-3:        #718096;
+      --font-d:          'Playfair Display', Georgia, serif;
+      --font-b:          'Source Sans 3', system-ui, sans-serif;
+      --panel-w:         360px;
+      --header-h:        54px;
+      --r:               8px;
+      --shadow:          0 4px 24px rgba(0,0,0,0.13);
+      --t:               0.2s ease;
+    }
+
+    html, body { height: 100%; overflow: hidden; font-family: var(--font-b); color: var(--c-text-1); background: #e8edf3; }
+
+    /* ── Layout ───────────────────────────────── */
+    #app { display: flex; flex-direction: column; height: 100%; }
+
+    /* ── Header ───────────────────────────────── */
+    #header {
+      height: var(--header-h);
+      background: var(--c-primary);
+      display: flex; align-items: center;
+      padding: 0 20px; gap: 14px;
+      flex-shrink: 0;
+      box-shadow: 0 2px 12px rgba(0,0,0,0.22);
+      z-index: 20;
+    }
+    #header-logo { height: 30px; object-fit: contain; display: none; }
+    #header-name {
+      font-family: var(--font-d);
+      font-size: 17px; font-weight: 700;
+      color: #fff; letter-spacing: 0.02em;
+    }
+    #header-tagline {
+      font-size: 10px; color: rgba(255,255,255,0.55);
+      letter-spacing: 0.06em; text-transform: uppercase;
+      margin-top: 1px;
+    }
+    #header-stats {
+      margin-left: auto;
+      display: flex; gap: 20px;
+    }
+    .stat { text-align: right; }
+    .stat-v {
+      font-family: var(--font-d); font-size: 19px; font-weight: 700;
+      color: var(--c-accent); line-height: 1;
+    }
+    .stat-l {
+      font-size: 9px; letter-spacing: 0.07em;
+      text-transform: uppercase; color: rgba(255,255,255,0.5);
+    }
+
+    /* ── Main ─────────────────────────────────── */
+    #main { flex: 1; position: relative; overflow: hidden; }
+
+    /* ── Map ──────────────────────────────────── */
+    #map { position: absolute; inset: 0; }
+
+    /* ── Tooltip ──────────────────────────────── */
+    #tooltip {
+      position: absolute;
+      background: var(--c-primary);
+      color: #fff;
+      padding: 6px 12px;
+      border-radius: 5px;
+      font-size: 12.5px;
+      font-weight: 600;
+      pointer-events: none;
+      opacity: 0;
+      transition: opacity 0.12s;
+      box-shadow: 0 2px 10px rgba(0,0,0,0.25);
+      z-index: 10;
+      white-space: nowrap;
+    }
+    #tooltip.visible { opacity: 1; }
+    #tooltip-firms { font-weight: 400; color: rgba(255,255,255,0.75); font-size: 11px; }
+
+    /* ── Legend ───────────────────────────────── */
+    #legend {
+      position: absolute;
+      bottom: 28px; left: 16px;
+      background: var(--c-panel-bg);
+      border: 1px solid var(--c-border);
+      border-radius: var(--r);
+      padding: 12px 14px;
+      box-shadow: var(--shadow);
+      z-index: 5;
+      min-width: 140px;
+    }
+    #legend-title {
+      font-size: 9px; font-weight: 700;
+      text-transform: uppercase; letter-spacing: 0.08em;
+      color: var(--c-text-3); margin-bottom: 9px;
+    }
+    .legend-row {
+      display: flex; align-items: center;
+      gap: 8px; margin-bottom: 5px;
+      font-size: 12px; color: var(--c-text-2);
+    }
+    .legend-row:last-child { margin-bottom: 0; }
+    .legend-swatch {
+      width: 12px; height: 12px; border-radius: 2px; flex-shrink: 0;
+    }
+
+    /* ── Map zoom controls ────────────────────── */
+    #zoom-ctrl {
+      position: absolute;
+      bottom: 28px; right: 16px;
+      display: flex; flex-direction: column; gap: 4px;
+      z-index: 5;
+    }
+    .zb {
+      width: 32px; height: 32px;
+      background: var(--c-panel-bg);
+      border: 1px solid var(--c-border);
+      border-radius: var(--r);
+      display: flex; align-items: center; justify-content: center;
+      font-size: 17px; color: var(--c-text-2);
+      box-shadow: var(--shadow);
+      transition: all var(--t);
+    }
+    .zb:hover { background: var(--c-primary); color: #fff; border-color: var(--c-primary); }
+
+    /* ── Side panel ───────────────────────────── */
+    #panel {
+      position: absolute;
+      top: 0; right: 0; bottom: 0;
+      width: var(--panel-w);
+      background: var(--c-panel-bg);
+      border-left: 1px solid var(--c-border);
+      box-shadow: -4px 0 24px rgba(0,0,0,0.10);
+      transform: translateX(100%);
+      transition: transform 0.3s cubic-bezier(.4,0,.2,1);
+      z-index: 15;
+      display: flex; flex-direction: column;
+      overflow: hidden;
+    }
+    #panel.open { transform: translateX(0); }
+
+    /* Panel header */
+    #panel-head {
+      padding: 20px 20px 16px;
+      border-bottom: 1px solid var(--c-border);
+      flex-shrink: 0;
+      background: var(--c-primary);
+      color: #fff;
+      position: relative;
+    }
+    #panel-country {
+      font-family: var(--font-d);
+      font-size: 22px; font-weight: 700;
+      letter-spacing: 0.01em;
+      padding-right: 28px;
+    }
+    #panel-count {
+      font-size: 11px; color: rgba(255,255,255,0.6);
+      margin-top: 3px; letter-spacing: 0.04em;
+      text-transform: uppercase;
+    }
+    #panel-close {
+      position: absolute; top: 16px; right: 16px;
+      color: rgba(255,255,255,0.6);
+      font-size: 20px; line-height: 1;
+      padding: 4px; border-radius: 4px;
+      transition: color var(--t);
+    }
+    #panel-close:hover { color: #fff; }
+
+    /* Firm cards */
+    #panel-firms {
+      flex: 1; overflow-y: auto;
+      padding: 12px 0;
+    }
+    #panel-firms::-webkit-scrollbar { width: 4px; }
+    #panel-firms::-webkit-scrollbar-track { background: transparent; }
+    #panel-firms::-webkit-scrollbar-thumb { background: #cbd5e0; border-radius: 2px; }
+
+    .firm-card {
+      padding: 14px 20px;
+      border-bottom: 1px solid #f0f4f8;
+      transition: background var(--t);
+    }
+    .firm-card:last-child { border-bottom: none; }
+    .firm-card:hover { background: #f8fafc; }
+
+    .firm-name {
+      font-family: var(--font-d);
+      font-size: 15px; font-weight: 700;
+      color: var(--c-primary); line-height: 1.25;
+      margin-bottom: 4px;
+    }
+    .firm-city {
+      font-size: 11.5px; color: var(--c-text-3);
+      margin-bottom: 8px;
+    }
+    .firm-desc {
+      font-size: 12.5px; color: var(--c-text-2);
+      line-height: 1.55; margin-bottom: 10px;
+    }
+    .firm-tags {
+      display: flex; flex-wrap: wrap; gap: 4px;
+      margin-bottom: 10px;
+    }
+    .tag {
+      font-size: 10px; font-weight: 600;
+      padding: 2px 8px; border-radius: 3px;
+      background: var(--c-primary-muted);
+      color: var(--c-primary);
+      letter-spacing: 0.03em;
+    }
+    .firm-links { display: flex; gap: 8px; flex-wrap: wrap; }
+    .firm-link {
+      display: inline-flex; align-items: center; gap: 4px;
+      font-size: 11.5px; font-weight: 600;
+      padding: 5px 12px; border-radius: var(--r);
+      transition: all var(--t);
+    }
+    .firm-link.primary {
+      background: var(--c-primary); color: #fff;
+    }
+    .firm-link.primary:hover { background: var(--c-primary-light); }
+    .firm-link.secondary {
+      background: #f1f5f9; color: var(--c-text-2);
+    }
+    .firm-link.secondary:hover { background: #e2e8f0; }
+
+    /* ── Responsive ───────────────────────────── */
+    @media (max-width: 600px) {
+      :root { --panel-w: 100%; }
+      #panel { top: auto; border-left: none; border-top: 1px solid var(--c-border); height: 50%; }
+      #legend { display: none; }
+    }
+  </style>
+</head>
+<body>
+<div id="app">
+
+  <header id="header">
+    <img id="header-logo" alt="" />
+    <div>
+      <div id="header-name"></div>
+      <div id="header-tagline"></div>
+    </div>
+    <div id="header-stats">
+      <div class="stat">
+        <div class="stat-v" id="stat-firms">0</div>
+        <div class="stat-l">Member Firms</div>
+      </div>
+      <div class="stat">
+        <div class="stat-v" id="stat-countries">0</div>
+        <div class="stat-l">Countries</div>
+      </div>
+    </div>
+  </header>
+
+  <div id="main">
+    <div id="map"></div>
+
+    <!-- Hover tooltip -->
+    <div id="tooltip">
+      <div id="tooltip-name"></div>
+      <div id="tooltip-firms"></div>
+    </div>
+
+    <!-- Choropleth legend -->
+    <div id="legend">
+      <div id="legend-title">Members per country</div>
+      <div id="legend-items"></div>
+    </div>
+
+    <!-- Zoom controls -->
+    <div id="zoom-ctrl">
+      <button class="zb" id="btn-zi" title="Zoom in">+</button>
+      <button class="zb" id="btn-zo" title="Zoom out">−</button>
+      <button class="zb" id="btn-zr" title="Reset view">⌂</button>
+    </div>
+
+    <!-- Country detail panel -->
+    <div id="panel">
+      <div id="panel-head">
+        <button id="panel-close">✕</button>
+        <div id="panel-country"></div>
+        <div id="panel-count"></div>
+      </div>
+      <div id="panel-firms"></div>
+    </div>
+  </div>
+
+</div>
+
+<script>
+(function () {
+  'use strict';
+
+  const CFG  = window.CELIA_CONFIG;
+  const B    = CFG.branding;
+  const C    = B.colors;
+  const M    = CFG.map;
+  const MEMS = CFG.members;
+
+  /* ── 1. CSS vars ─────────────────────────── */
+  const R = document.documentElement.style;
+  R.setProperty('--c-primary',       C.primary);
+  R.setProperty('--c-primary-light', C.primaryLight);
+  R.setProperty('--c-primary-muted', C.primaryMuted);
+  R.setProperty('--c-accent',        C.accent);
+  R.setProperty('--c-panel-bg',      C.panelBg);
+  R.setProperty('--c-border',        C.panelBorder);
+  R.setProperty('--c-text-1',        C.textPrimary);
+  R.setProperty('--c-text-2',        C.textSecondary);
+  R.setProperty('--c-text-3',        C.textMuted);
+  R.setProperty('--font-d', `'${B.fonts.display}', Georgia, serif`);
+  R.setProperty('--font-b', `'${B.fonts.body}', system-ui, sans-serif`);
+
+  /* ── 2. Google Fonts ─────────────────────── */
+  const lk = document.createElement('link');
+  lk.rel  = 'stylesheet';
+  lk.href = `https://fonts.googleapis.com/css2?family=${B.fonts.display.replace(/ /g,'+')}:wght@400;700&family=${B.fonts.body.replace(/ /g,'+')}:wght@400;600&display=swap`;
+  document.head.appendChild(lk);
+
+  /* ── 3. Header ───────────────────────────── */
+  document.title = B.allianceName + ' — Member Map';
+  document.getElementById('header-name').textContent    = B.allianceName;
+  document.getElementById('header-tagline').textContent = B.tagline;
+  if (B.logoUrl) {
+    const img = document.getElementById('header-logo');
+    img.src = B.logoUrl; img.style.display = 'block';
+  }
+  const countries = new Set(MEMS.map(m => m.country));
+  document.getElementById('stat-firms').textContent     = MEMS.length;
+  document.getElementById('stat-countries').textContent = countries.size;
+
+  /* ── 4. Country → firms index ────────────── */
+  // isoMap: { "FR": [firm, firm], "DE": [firm], … }
+  const isoMap = {};
+  MEMS.forEach(m => {
+    if (!isoMap[m.country]) isoMap[m.country] = [];
+    isoMap[m.country].push(m);
+  });
+
+  /* ── 5. Choropleth colour scale ──────────── */
+  // max firms in any one country drives the scale
+  const maxFirms = Math.max(...Object.values(isoMap).map(a => a.length));
+
+  // Interpolate between primaryMuted (1 firm) → primary (maxFirms)
+  // We'll use 4 steps for the legend
+  function hexToRgb(hex) {
+    const h = hex.replace('#','');
+    return [
+      parseInt(h.substring(0,2),16),
+      parseInt(h.substring(2,4),16),
+      parseInt(h.substring(4,6),16)
+    ];
+  }
+  function rgbToHex(r,g,b) {
+    return '#' + [r,g,b].map(v => Math.round(v).toString(16).padStart(2,'0')).join('');
+  }
+  function lerpColor(a, b, t) {
+    const [ar,ag,ab] = hexToRgb(a);
+    const [br,bg,bb] = hexToRgb(b);
+    return rgbToHex(ar+(br-ar)*t, ag+(bg-ag)*t, ab+(bb-ab)*t);
+  }
+
+  const COLOR_LOW  = '#a8c4df';  // lightest — 1 firm
+  const COLOR_HIGH = C.primary;  // darkest  — most firms
+
+  function countryColor(n) {
+    const t = maxFirms === 1 ? 1 : (n - 1) / (maxFirms - 1);
+    return lerpColor(COLOR_LOW, COLOR_HIGH, t);
+  }
+
+  /* ── 6. Legend ───────────────────────────── */
+  const legendEl = document.getElementById('legend-items');
+  const steps = maxFirms === 1 ? 1 : Math.min(maxFirms, 4);
+  for (let i = 0; i < steps; i++) {
+    const n = maxFirms === 1 ? 1 : Math.round(1 + (i / (steps - 1)) * (maxFirms - 1));
+    const row = document.createElement('div');
+    row.className = 'legend-row';
+    row.innerHTML = `<span class="legend-swatch" style="background:${countryColor(n)}"></span>
+      <span>${n === 1 ? '1 firm' : n + ' firms'}</span>`;
+    legendEl.appendChild(row);
+  }
+
+  /* ── 7. Tooltip ──────────────────────────── */
+  const tooltip     = document.getElementById('tooltip');
+  const tooltipName = document.getElementById('tooltip-name');
+  const tooltipFirms = document.getElementById('tooltip-firms');
+
+  function showTooltip(x, y, countryName, firmCount) {
+    tooltipName.textContent  = countryName;
+    tooltipFirms.textContent = firmCount === 1 ? '1 member firm' : firmCount + ' member firms';
+    // keep tooltip inside viewport
+    const tw = tooltip.offsetWidth || 160;
+    const th = tooltip.offsetHeight || 40;
+    const px = Math.min(x + 14, window.innerWidth  - tw - 8);
+    const py = Math.max(y - th - 10, 8);
+    tooltip.style.left = px + 'px';
+    tooltip.style.top  = py + 'px';
+    tooltip.classList.add('visible');
+  }
+  function hideTooltip() { tooltip.classList.remove('visible'); }
+
+  /* ── 8. Panel ────────────────────────────── */
+  const panel     = document.getElementById('panel');
+  const panelHead = document.getElementById('panel-country');
+  const panelCnt  = document.getElementById('panel-count');
+  const panelBody = document.getElementById('panel-firms');
+  let   activeIso = null;
+
+  function openPanel(iso) {
+    const firms = isoMap[iso] || [];
+    activeIso = iso;
+
+    panelHead.textContent = firms[0]?.countryName || iso;
+    panelCnt.textContent  = firms.length === 1
+      ? '1 member firm'
+      : firms.length + ' member firms';
+
+    panelBody.innerHTML = '';
+    firms.forEach(f => {
+      const card = document.createElement('div');
+      card.className = 'firm-card';
+
+      const tags = (f.specialisms || []).map(s =>
+        `<span class="tag">${s}</span>`).join('');
+
+      const links = [];
+      if (f.website) links.push(
+        `<a href="${f.website}" target="_blank" rel="noopener" class="firm-link primary">↗ Website</a>`);
+      if (f.email) links.push(
+        `<a href="mailto:${f.email}" class="firm-link secondary">✉ Email</a>`);
+      if (f.phone) links.push(
+        `<a href="tel:${f.phone}" class="firm-link secondary">📞</a>`);
+
+      card.innerHTML = `
+        <div class="firm-name">${f.firm}</div>
+        <div class="firm-city">${f.city}</div>
+        ${f.description ? `<div class="firm-desc">${f.description}</div>` : ''}
+        ${tags ? `<div class="firm-tags">${tags}</div>` : ''}
+        ${links.length ? `<div class="firm-links">${links.join('')}</div>` : ''}
+      `;
+      panelBody.appendChild(card);
+    });
+
+    panel.classList.add('open');
+
+    // Highlight active country on map
+    if (map && map.getLayer('countries-fill')) {
+      map.setPaintProperty('countries-fill', 'fill-color', [
+        'case',
+        ['==', ['get', 'ISO_A2'], iso],
+        C.accent,
+        ['has', ['get', 'ISO_A2'], ['literal', Object.fromEntries(Object.keys(isoMap).map(k => [k, true]))]],
+        ['interpolate', ['linear'],
+          ['length', ['coalesce', ['get', '_firmCount'], ['literal', '']]],
+          0, COLOR_LOW,
+          1, COLOR_HIGH
+        ],
+        'transparent'
+      ]);
+      // Simpler: just update via feature-state
+      updateFillColors(iso);
+    }
+  }
+
+  function closePanel() {
+    activeIso = null;
+    panel.classList.remove('open');
+    updateFillColors(null);
+  }
+
+  document.getElementById('panel-close').addEventListener('click', closePanel);
+
+  /* ── 9. Map ──────────────────────────────── */
+  let map;
+
+  function initMap() {
+    map = new maplibregl.Map({
+      container: 'map',
+      style:     M.styleUrl,
+      center:    M.center,
+      zoom:      M.zoom,
+      minZoom:   M.minZoom,
+      maxZoom:   M.maxZoom || 12,
+      attributionControl: false,
+    });
+
+    map.addControl(
+      new maplibregl.AttributionControl({ compact: true }), 'bottom-left'
+    );
+
+    map.on('load', addChoropleth);
+
+    document.getElementById('btn-zi').onclick = () => map.zoomIn();
+    document.getElementById('btn-zo').onclick = () => map.zoomOut();
+    document.getElementById('btn-zr').onclick = () =>
+      map.flyTo({ center: M.center, zoom: M.zoom, duration: 800 });
+  }
+
+  /* ── 10. Choropleth ──────────────────────── */
+  async function addChoropleth() {
+    let geojson;
+    try {
+      const res = await fetch(
+        'https://raw.githubusercontent.com/datasets/geo-countries/master/data/countries.geojson'
+      );
+      geojson = await res.json();
+    } catch(e) {
+      console.warn('Could not load country GeoJSON', e);
+      return;
+    }
+
+    // Attach firm count to each feature as a property
+    // and filter to only member countries
+    const memberFeatures = [];
+    const allFeatures    = [];
+
+    geojson.features.forEach(f => {
+      const iso = f.properties.ISO_A2 || f.properties.iso_a2 || '';
+      const firms = isoMap[iso];
+      if (firms) {
+        f.properties._firmCount = firms.length;
+        f.properties._iso       = iso;
+        memberFeatures.push(f);
+      }
+    });
+
+    const memberGeoJSON = { type: 'FeatureCollection', features: memberFeatures };
+
+    map.addSource('members', {
+      type: 'geojson',
+      data: memberGeoJSON,
+      promoteId: 'ISO_A2',
+    });
+
+    // Build a colour expression using match
+    // [ISO_A2 → colour]
+    const matchExpr = ['match', ['get', 'ISO_A2']];
+    Object.entries(isoMap).forEach(([iso, firms]) => {
+      matchExpr.push(iso, countryColor(firms.length));
+    });
+    matchExpr.push('transparent'); // fallback (shouldn't appear)
+
+    // Fill layer
+    map.addLayer({
+      id:     'countries-fill',
+      type:   'fill',
+      source: 'members',
+      paint: {
+        'fill-color':   matchExpr,
+        'fill-opacity': [
+          'case',
+          ['boolean', ['feature-state', 'hover'], false],  0.85,
+          ['boolean', ['feature-state', 'active'], false], 1.0,
+          0.55
+        ],
+      }
+    }, getFirstSymbolLayer());
+
+    // Border layer
+    map.addLayer({
+      id:     'countries-border',
+      type:   'line',
+      source: 'members',
+      paint: {
+        'line-color': C.countryBorder || C.primary,
+        'line-width': [
+          'case',
+          ['boolean', ['feature-state', 'active'], false], 2.5,
+          1.2
+        ],
+        'line-opacity': 0.7,
+      }
+    }, getFirstSymbolLayer());
+
+    /* ── Hover interaction ── */
+    let hoveredId = null;
+
+    map.on('mousemove', 'countries-fill', e => {
+      map.getCanvas().style.cursor = 'pointer';
+      if (e.features.length) {
+        const feat = e.features[0];
+        const iso  = feat.properties._iso || feat.properties.ISO_A2;
+        const firms = isoMap[iso] || [];
+
+        if (hoveredId !== null && hoveredId !== iso) {
+          map.setFeatureState({ source: 'members', id: hoveredId }, { hover: false });
+        }
+        hoveredId = iso;
+        map.setFeatureState({ source: 'members', id: iso }, { hover: true });
+
+        // Calculate position relative to #main
+        const mainRect = document.getElementById('main').getBoundingClientRect();
+        showTooltip(
+          e.originalEvent.clientX - mainRect.left,
+          e.originalEvent.clientY - mainRect.top,
+          firms[0]?.countryName || iso,
+          firms.length
+        );
+      }
+    });
+
+    map.on('mouseleave', 'countries-fill', () => {
+      map.getCanvas().style.cursor = '';
+      if (hoveredId !== null) {
+        map.setFeatureState({ source: 'members', id: hoveredId }, { hover: false });
+        hoveredId = null;
+      }
+      hideTooltip();
+    });
+
+    map.on('click', 'countries-fill', e => {
+      if (!e.features.length) return;
+      const iso = e.features[0].properties._iso || e.features[0].properties.ISO_A2;
+      if (isoMap[iso]) openPanel(iso);
+    });
+  }
+
+  /* ── 11. Update fill feature-states (active) */
+  function updateFillColors(activeIso) {
+    if (!map || !map.getSource('members')) return;
+    // Reset all, then set active
+    Object.keys(isoMap).forEach(iso => {
+      map.setFeatureState({ source: 'members', id: iso }, { active: iso === activeIso });
+    });
+  }
+
+  function getFirstSymbolLayer() {
+    if (!map) return undefined;
+    const layers = map.getStyle().layers || [];
+    for (const l of layers) {
+      if (l.type === 'symbol') return l.id;
+    }
+    return undefined;
+  }
+
+  /* ── Boot ─────────────────────────────────── */
+  initMap();
+
+})();
+</script>
+</body>
+</html>
